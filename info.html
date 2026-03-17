@@ -55,10 +55,23 @@
           </label>
 
           <label>
-            <span>مسار الصورة</span>
-            <input type="text" id="cardImage" placeholder="assets/new-image.png" />
+            <span>اسم الصورة فقط</span>
+            <input type="text" id="cardImage" placeholder="new-image.png" />
+            <small class="field-help">المسار يضاف تلقائيًا: <code>assets/</code></small>
           </label>
         </div>
+
+
+        <section class="preview-box" aria-label="معاينة الصورة">
+          <div class="preview-head">
+            <strong>معاينة الصورة</strong>
+            <span id="previewPath">assets/</span>
+          </div>
+          <div class="preview-stage" id="previewStage">
+            <img id="imagePreview" alt="معاينة الصورة" hidden />
+            <p id="previewHint">اكتب اسم الصورة هنا، ثم ارفع الصورة لاحقًا إلى مجلد <code>assets</code>. ستظهر المعاينة هنا إذا كانت الصورة موجودة.</p>
+          </div>
+        </section>
 
         <label class="textarea-label">
           <span>البرومبت الكامل</span>

@@ -1,3 +1,6 @@
+
+const ASSETS_PREFIX = 'assets/';
+
 const formEls = {
   id: document.getElementById('cardId'),
   title: document.getElementById('cardTitle'),
@@ -11,6 +14,9 @@ const rawEditorEl = document.getElementById('rawEditor');
 const fileInputEl = document.getElementById('fileInput');
 const toastEl = document.getElementById('toast');
 const addBtn = document.getElementById('addBtn');
+const previewImgEl = document.getElementById('imagePreview');
+const previewHintEl = document.getElementById('previewHint');
+const previewPathEl = document.getElementById('previewPath');
 
 let libraryState = [];
 let editingId = null;
@@ -33,11 +39,30 @@ function buildPrompt(card) {
   return card.template.replace(/\{\{(.*?)\}\}/g, (_, key) => defaults[key.trim()] ?? '');
 }
 
+function sanitizeImageName(input) {
+  const raw = String(input || '').trim().replaceAll('\\', '/');
+  if (!raw) return '';
+  return raw.split('/').filter(Boolean).pop() || '';
+}
+
+function toImagePath(input) {
+  const fileName = sanitizeImageName(input);
+  return fileName ? `${ASSETS_PREFIX}${fileName}` : ASSETS_PREFIX;
+}
+
+function imagePathToName(path) {
+  return sanitizeImageName(path);
+}
+
+function stripExtension(name) {
+  return String(name || '').replace(/\.[^.]+$/, '');
+}
+
 function normalizeCard(card) {
   return {
     id: String(card.id || '').trim(),
     title: String(card.title || '').trim(),
-    image: String(card.image || '').trim(),
+    image: toImagePath(card.image || ''),
     prompt: String(buildPrompt(card) || '').trim()
   };
 }
@@ -69,7 +94,7 @@ function templateString(str) {
 
 function cardsToJs(cards) {
   const body = cards.map(card => {
-    return `  {\n    id: ${jsString(card.id)},\n    title: ${jsString(card.title)},\n    image: ${jsString(card.image)},\n    prompt: ${templateString(card.prompt)}\n  }`;
+    return `  {\n    id: ${jsString(card.id)},\n    title: ${jsString(card.title)},\n    image: ${jsString(toImagePath(card.image))},\n    prompt: ${templateString(card.prompt)}\n  }`;
   }).join(',\n\n');
 
   return `const PROMPT_LIBRARY = [\n${body}\n];\n`;
@@ -102,6 +127,34 @@ async function copyText(text, successMessage) {
   showToast(successMessage);
 }
 
+function updatePreview() {
+  const finalPath = toImagePath(formEls.image.value);
+  previewPathEl.textContent = finalPath;
+
+  const fileName = sanitizeImageName(formEls.image.value);
+  if (!fileName) {
+    previewImgEl.hidden = true;
+    previewHintEl.hidden = false;
+    previewHintEl.innerHTML = 'اكتب اسم الصورة هنا، ثم ارفع الصورة لاحقًا إلى مجلد <code>assets</code>. ستظهر المعاينة هنا إذا كانت الصورة موجودة.';
+    previewImgEl.removeAttribute('src');
+    return;
+  }
+
+  previewImgEl.hidden = false;
+  previewHintEl.hidden = true;
+  const cacheBust = `v=${Date.now()}`;
+  previewImgEl.src = `${finalPath}?${cacheBust}`;
+  previewImgEl.onerror = () => {
+    previewImgEl.hidden = true;
+    previewHintEl.hidden = false;
+    previewHintEl.innerHTML = `لا توجد صورة الآن في <code>${escapeHtml(finalPath)}</code>. أضفها إلى مجلد assets ثم حدّث الصفحة أو اكتب اسم صورة موجودة.`;
+  };
+  previewImgEl.onload = () => {
+    previewHintEl.hidden = true;
+    previewImgEl.hidden = false;
+  };
+}
+
 function resetForm() {
   formEls.id.value = '';
   formEls.title.value = '';
@@ -109,15 +162,17 @@ function resetForm() {
   formEls.prompt.value = '';
   editingId = null;
   addBtn.textContent = 'إضافة البطاقة';
+  updatePreview();
 }
 
 function fillForm(card) {
   formEls.id.value = card.id;
   formEls.title.value = card.title;
-  formEls.image.value = card.image;
+  formEls.image.value = imagePathToName(card.image);
   formEls.prompt.value = card.prompt;
   editingId = card.id;
   addBtn.textContent = 'تحديث البطاقة';
+  updatePreview();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -173,18 +228,20 @@ function loadState(cards) {
   libraryState = cards.map(normalizeCard).filter(card => card.id && card.image && card.prompt);
   syncRawEditor();
   renderList();
+  updatePreview();
 }
 
 function collectFormCard() {
+  const fileName = sanitizeImageName(formEls.image.value || `${formEls.id.value.trim()}.png`);
   const card = {
     id: formEls.id.value.trim(),
     title: formEls.title.value.trim(),
-    image: formEls.image.value.trim(),
+    image: toImagePath(fileName),
     prompt: formEls.prompt.value.trim()
   };
 
-  if (!card.id || !card.image || !card.prompt) {
-    throw new Error('الحقول المطلوبة هي: id، ومسار الصورة، والبرومبت الكامل.');
+  if (!card.id || !fileName || !card.prompt) {
+    throw new Error('الحقول المطلوبة هي: id، واسم الصورة، والبرومبت الكامل.');
   }
 
   return card;
@@ -210,9 +267,23 @@ function initializeFromCurrentLibrary() {
   loadState(PROMPT_LIBRARY);
 }
 
+formEls.image.addEventListener('input', updatePreview);
+formEls.id.addEventListener('input', () => {
+  if (!formEls.image.value.trim()) {
+    updatePreview();
+  }
+});
+
 document.getElementById('slugBtn').addEventListener('click', () => {
-  const source = formEls.title.value || formEls.id.value;
-  formEls.id.value = slugifyArabicTitle(source || 'new_card_id');
+  const imageStem = stripExtension(sanitizeImageName(formEls.image.value));
+  const source = formEls.title.value.trim() || imageStem || formEls.id.value.trim() || formEls.prompt.value.trim().slice(0, 40);
+  const generated = slugifyArabicTitle(source || `card_${Date.now()}`) || `card_${Date.now()}`;
+  formEls.id.value = generated;
+  if (!formEls.image.value.trim()) {
+    formEls.image.value = `${generated}.png`;
+  }
+  updatePreview();
+  showToast('تم توليد id');
 });
 
 document.getElementById('clearBtn').addEventListener('click', resetForm);
@@ -285,3 +356,4 @@ document.getElementById('exportBtn').addEventListener('click', () => {
 });
 
 initializeFromCurrentLibrary();
+updatePreview();

@@ -261,3 +261,56 @@ code {
     aspect-ratio: 9 / 16;
   }
 }
+
+
+.field-help {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+}
+
+.preview-box {
+  margin-top: 18px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 20px;
+  background: rgba(255,255,255,.03);
+  padding: 16px;
+}
+
+.preview-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+  color: var(--muted);
+}
+
+.preview-head strong {
+  color: var(--text);
+}
+
+.preview-stage {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed rgba(255,255,255,.12);
+  border-radius: 16px;
+  background: rgba(10,15,24,.7);
+  overflow: hidden;
+  padding: 14px;
+}
+
+.preview-stage img {
+  max-width: 100%;
+  max-height: 360px;
+  border-radius: 14px;
+  display: block;
+}
+
+.preview-stage p {
+  margin: 0;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.9;
+}
