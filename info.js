@@ -1,4 +1,3 @@
-
 const ASSETS_PREFIX = 'assets/';
 
 const formEls = {
@@ -45,26 +44,8 @@ function sanitizeImageName(input) {
   return raw.split('/').filter(Boolean).pop() || '';
 }
 
-function toImagePath(input) {
-  const fileName = sanitizeImageName(input);
-  return fileName ? `${ASSETS_PREFIX}${fileName}` : ASSETS_PREFIX;
-}
-
-function imagePathToName(path) {
-  return sanitizeImageName(path);
-}
-
 function stripExtension(name) {
   return String(name || '').replace(/\.[^.]+$/, '');
-}
-
-function normalizeCard(card) {
-  return {
-    id: String(card.id || '').trim(),
-    title: String(card.title || '').trim(),
-    image: toImagePath(card.image || ''),
-    prompt: String(buildPrompt(card) || '').trim()
-  };
 }
 
 function slugifyArabicTitle(input) {
@@ -81,6 +62,38 @@ function slugifyArabicTitle(input) {
     .replace(/^_+|_+$/g, '');
 }
 
+function sanitizeIdInput(input) {
+  const clean = stripExtension(sanitizeImageName(String(input || '').trim()) || String(input || '').trim());
+  return slugifyArabicTitle(clean);
+}
+
+function makeGeneratedId() {
+  const imageStem = stripExtension(sanitizeImageName(formEls.image.value));
+  const promptStem = formEls.prompt.value.trim().slice(0, 40);
+  const source = formEls.title.value.trim() || imageStem || formEls.id.value.trim() || promptStem || `card_${Date.now()}`;
+  return sanitizeIdInput(source) || `card_${Date.now()}`;
+}
+
+function toImagePath(input) {
+  const fileName = sanitizeImageName(input);
+  return fileName ? `${ASSETS_PREFIX}${fileName}` : '';
+}
+
+function imagePathToName(path) {
+  return sanitizeImageName(path);
+}
+
+function normalizeCard(card) {
+  const normalizedId = sanitizeIdInput(card.id || '') || stripExtension(sanitizeImageName(card.image || ''));
+  const normalizedImageName = sanitizeImageName(card.image || `${normalizedId}.png`);
+  return {
+    id: normalizedId,
+    title: String(card.title || '').trim(),
+    image: toImagePath(normalizedImageName),
+    prompt: String(buildPrompt(card) || '').trim()
+  };
+}
+
 function jsString(str) {
   return JSON.stringify(String(str));
 }
@@ -94,7 +107,8 @@ function templateString(str) {
 
 function cardsToJs(cards) {
   const body = cards.map(card => {
-    return `  {\n    id: ${jsString(card.id)},\n    title: ${jsString(card.title)},\n    image: ${jsString(toImagePath(card.image))},\n    prompt: ${templateString(card.prompt)}\n  }`;
+    const normalized = normalizeCard(card);
+    return `  {\n    id: ${jsString(normalized.id)},\n    title: ${jsString(normalized.title)},\n    image: ${jsString(normalized.image)},\n    prompt: ${templateString(normalized.prompt)}\n  }`;
   }).join(',\n\n');
 
   return `const PROMPT_LIBRARY = [\n${body}\n];\n`;
@@ -128,14 +142,14 @@ async function copyText(text, successMessage) {
 }
 
 function updatePreview() {
-  const finalPath = toImagePath(formEls.image.value);
-  previewPathEl.textContent = finalPath;
+  const fileName = sanitizeImageName(formEls.image.value || `${sanitizeIdInput(formEls.id.value)}.png`);
+  const finalPath = toImagePath(fileName);
+  previewPathEl.textContent = finalPath || `${ASSETS_PREFIX}example.png`;
 
-  const fileName = sanitizeImageName(formEls.image.value);
   if (!fileName) {
     previewImgEl.hidden = true;
     previewHintEl.hidden = false;
-    previewHintEl.innerHTML = 'اكتب اسم الصورة هنا، ثم ارفع الصورة لاحقًا إلى مجلد <code>assets</code>. ستظهر المعاينة هنا إذا كانت الصورة موجودة.';
+    previewHintEl.innerHTML = 'اكتب فقط اسم الصورة مثل <code>555.png</code>، وسيضيف المحرر تلقائيًا المسار <code>assets/</code>.';
     previewImgEl.removeAttribute('src');
     return;
   }
@@ -147,7 +161,7 @@ function updatePreview() {
   previewImgEl.onerror = () => {
     previewImgEl.hidden = true;
     previewHintEl.hidden = false;
-    previewHintEl.innerHTML = `لا توجد صورة الآن في <code>${escapeHtml(finalPath)}</code>. أضفها إلى مجلد assets ثم حدّث الصفحة أو اكتب اسم صورة موجودة.`;
+    previewHintEl.innerHTML = `لا توجد صورة الآن في <code>${escapeHtml(finalPath)}</code>. ارفعها إلى مجلد <code>assets</code> ثم حدّث الصفحة.`;
   };
   previewImgEl.onload = () => {
     previewHintEl.hidden = true;
@@ -232,16 +246,17 @@ function loadState(cards) {
 }
 
 function collectFormCard() {
-  const fileName = sanitizeImageName(formEls.image.value || `${formEls.id.value.trim()}.png`);
+  const resolvedId = sanitizeIdInput(formEls.id.value) || stripExtension(sanitizeImageName(formEls.image.value));
+  const fileName = sanitizeImageName(formEls.image.value || `${resolvedId}.png`);
   const card = {
-    id: formEls.id.value.trim(),
+    id: resolvedId,
     title: formEls.title.value.trim(),
     image: toImagePath(fileName),
     prompt: formEls.prompt.value.trim()
   };
 
   if (!card.id || !fileName || !card.prompt) {
-    throw new Error('الحقول المطلوبة هي: id، واسم الصورة، والبرومبت الكامل.');
+    throw new Error('الحقول المطلوبة هي: id أو اسم الصورة، ثم البرومبت الكامل.');
   }
 
   return card;
@@ -269,21 +284,20 @@ function initializeFromCurrentLibrary() {
 
 formEls.image.addEventListener('input', updatePreview);
 formEls.id.addEventListener('input', () => {
-  if (!formEls.image.value.trim()) {
-    updatePreview();
-  }
+  if (!formEls.image.value.trim()) updatePreview();
+});
+formEls.title.addEventListener('input', () => {
+  if (!formEls.id.value.trim()) updatePreview();
 });
 
 document.getElementById('slugBtn').addEventListener('click', () => {
-  const imageStem = stripExtension(sanitizeImageName(formEls.image.value));
-  const source = formEls.title.value.trim() || imageStem || formEls.id.value.trim() || formEls.prompt.value.trim().slice(0, 40);
-  const generated = slugifyArabicTitle(source || `card_${Date.now()}`) || `card_${Date.now()}`;
+  const generated = makeGeneratedId();
   formEls.id.value = generated;
   if (!formEls.image.value.trim()) {
     formEls.image.value = `${generated}.png`;
   }
   updatePreview();
-  showToast('تم توليد id');
+  showToast(`تم توليد id: ${generated}`);
 });
 
 document.getElementById('clearBtn').addEventListener('click', resetForm);

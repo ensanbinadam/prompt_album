@@ -20,6 +20,27 @@ function buildPrompt(card) {
   return card.template.replace(/\{\{(.*?)\}\}/g, (_, key) => defaults[key.trim()] ?? '');
 }
 
+function sanitizeImageName(input) {
+  const raw = String(input || '').trim().replaceAll('\\', '/');
+  if (!raw) return '';
+  return raw.split('/').filter(Boolean).pop() || '';
+}
+
+function ensureImagePath(image, id) {
+  const fileName = sanitizeImageName(image) || `${String(id || 'card').replace(/\.[^.]+$/, '')}.png`;
+  return `assets/${fileName}`;
+}
+
+function normalizeCard(card) {
+  return {
+    ...card,
+    id: String(card.id || '').trim(),
+    title: String(card.title || '').trim(),
+    image: ensureImagePath(card.image, card.id),
+    prompt: buildPrompt(card)
+  };
+}
+
 async function copyText(text, label) {
   try {
     await navigator.clipboard.writeText(text);
@@ -43,9 +64,10 @@ function showToast(message) {
 }
 
 function renderGallery() {
-  promptCountEl.textContent = PROMPT_LIBRARY.length;
+  const cards = (Array.isArray(PROMPT_LIBRARY) ? PROMPT_LIBRARY : []).map(normalizeCard);
+  promptCountEl.textContent = cards.length;
 
-  galleryEl.innerHTML = PROMPT_LIBRARY.map(card => `
+  galleryEl.innerHTML = cards.map(card => `
     <article class="card">
       <figure>
         <img src="${escapeHtml(card.image)}" alt="${escapeHtml(card.title || 'نموذج بطاقة')}" loading="lazy" title="${escapeHtml(card.title || '')}" />
@@ -58,9 +80,9 @@ function renderGallery() {
 
   galleryEl.querySelectorAll('.copy-btn').forEach(button => {
     button.addEventListener('click', () => {
-      const card = PROMPT_LIBRARY.find(item => item.id === button.dataset.id);
+      const card = cards.find(item => item.id === button.dataset.id);
       if (!card) return;
-      copyText(buildPrompt(card), card.title || '');
+      copyText(card.prompt, card.title || card.id);
     });
   });
 }
